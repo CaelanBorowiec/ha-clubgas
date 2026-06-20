@@ -1,0 +1,83 @@
+{
+  "config": {
+    "step": {
+      "location": {
+        "title": "Home location",
+        "description": "Set your home coordinates and search radius for nearby Costco and Sam's Club fuel stations.",
+        "data": {
+          "home_lat": "Home latitude",
+          "home_lng": "Home longitude",
+          "radius_miles": "Search radius (miles)",
+          "retailers": "Retailers",
+          "fuel_types": "Fuel types to track",
+          "scan_interval": "Update interval (minutes)"
+        }
+      },
+      "discover": {
+        "title": "Select stations",
+        "description": "Choose nearby stations found within your radius ({count} found), or paste fuel-center URLs (one per line).",
+        "data": {
+          "selected": "Nearby stations",
+          "manual_stations": "Manual station URLs or IDs"
+        }
+      },
+      "users": {
+        "title": "Household MPG",
+        "description": "Optionally assign Home Assistant users and their vehicle MPG for trip cost sensors.",
+        "data": {
+          "user_0": "User 1",
+          "mpg_0": "User 1 MPG",
+          "user_1": "User 2",
+          "mpg_1": "User 2 MPG",
+          "user_2": "User 3",
+          "mpg_2": "User 3 MPG"
+        }
+      }
+    },
+    "error": {
+      "base": "Configuration error",
+      "manual_stations": "Invalid manual station"
+    },
+    "abort": {
+      "already_configured": "Club Gas is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Club Gas options",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "add_station": {
+        "title": "Add station",
+        "description": "Paste a Costco warehouse URL, Sam's fuel-center URL, or an ID like costco:332 or sams:6677.",
+        "data": {
+          "reference": "Station URL or ID"
+        }
+      },
+      "update_mpg": {
+        "title": "Update MPG",
+        "description": "Update MPG values for configured users."
+      }
+    },
+    "error": {
+      "reference": "Could not add station"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "regular": { "name": "Regular" },
+      "premium": { "name": "Premium" },
+      "diesel": { "name": "Diesel" },
+      "unleaded": { "name": "Unleaded" }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh",
+      "description": "Refresh all Club Gas station data immediately."
+    }
+  }
+}

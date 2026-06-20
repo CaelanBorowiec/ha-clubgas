@@ -1,0 +1,33 @@
+[
+  false,
+  {
+    "stlocID": 332,
+    "locationName": "Pittsburgh",
+    "address1": "501 36th St",
+    "city": "Pittsburgh",
+    "state": "PA",
+    "zipCode": "15201",
+    "latitude": 40.4625,
+    "longitude": -79.9611,
+    "gasPrices": {
+      "regular": "3.459",
+      "premium": "4.159",
+      "diesel": "3.899"
+    }
+  },
+  {
+    "stlocID": 649,
+    "locationName": "Homestead",
+    "address1": "501 36th St",
+    "city": "Homestead",
+    "state": "PA",
+    "zipCode": "15120",
+    "latitude": 40.3939,
+    "longitude": -79.9162,
+    "gasPrices": {
+      "regular": "3.499",
+      "premium": "4.199",
+      "diesel": ""
+    }
+  }
+]
