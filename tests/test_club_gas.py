@@ -69,5 +69,6 @@ def test_costco_parse_warehouse() -> None:
     station = client._parse_warehouse(warehouse, 3.2)
     assert station is not None
     assert station.store_id == "332"
+    assert station.name == "Costco Pittsburgh"
     assert station.prices["regular"] == pytest.approx(3.459)
     assert station.prices["diesel"] == pytest.approx(3.899)

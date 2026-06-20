@@ -138,7 +138,7 @@ class CostcoClient:
         return StationData(
             brand=BRAND_COSTCO,
             store_id=store_id,
-            name=str(warehouse.get("locationName") or f"Costco #{store_id}"),
+            name=_costco_name(store_id, warehouse.get("locationName")),
             address=address,
             latitude=_maybe_float(warehouse.get("latitude")),
             longitude=_maybe_float(warehouse.get("longitude")),
@@ -146,6 +146,16 @@ class CostcoClient:
             url=f"https://www.costco.com/w/-/warehouse/{store_id}",
             prices=prices,
         )
+
+
+def _costco_name(store_id: str, location_name: Any) -> str:
+    """Build a display name; Costco API locationName is city-only."""
+    location = str(location_name).strip() if location_name else ""
+    if not location:
+        return f"Costco #{store_id}"
+    if location.lower().startswith("costco"):
+        return location
+    return f"Costco {location}"
 
 
 def _maybe_float(value: Any) -> float | None:
