@@ -55,11 +55,11 @@ costco:332
 
 ### Step 3 — User MPG
 
-Assign up to three Home Assistant users and their vehicle MPG (default 28). Trip cost sensors are created per user × station × fuel type.
+Assign up to three Home Assistant users with MPG and fuel grade (default: 28 MPG, regular/unleaded). Each user gets one trip cost sensor per station using their fuel price.
 
 ### Reconfigure later
 
-Use **Configure** on the integration to add stations by URL or update MPG values.
+Use **Configure** on the integration to add stations by URL or update MPG and fuel settings.
 
 ## Sensors
 

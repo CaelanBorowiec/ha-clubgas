@@ -11,14 +11,18 @@ import aiohttp
 COSTCO_URL = "https://www.costco.com/AjaxWarehouseBrowseLookupView"
 LAT, LNG = 40.4406, -79.9959
 
-HEADERS = {
+COSTCO_HEADERS = {
+    "User-Agent": "Gastrak/1.0",
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.5",
+}
+BROWSER_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     ),
-    "Accept": "*/*",
+    "Accept": "text/html,application/xhtml+xml",
     "Accept-Language": "en-US,en;q=0.5",
-    "Referer": "https://www.costco.com/warehouse-locations",
 }
 
 
@@ -31,8 +35,11 @@ async def test_costco(session: aiohttp.ClientSession) -> None:
         "longitude": str(LNG),
         "countryCode": "US",
     }
-    async with session.get(COSTCO_URL, params=params, headers=HEADERS) as resp:
+    async with session.get(COSTCO_URL, params=params, headers=COSTCO_HEADERS) as resp:
         print("Costco status:", resp.status)
+        if resp.status != 200:
+            print("Costco body:", (await resp.text())[:200])
+            return
         data = json.loads(await resp.text())
         print("Costco warehouses:", len(data) - 1 if isinstance(data, list) else 0)
         if isinstance(data, list) and len(data) > 1:
@@ -50,12 +57,8 @@ async def test_sams(session: aiohttp.ClientSession) -> None:
         "https://www.samsclub.com/club/6677-monroeville-pa/fuel-center",
         "https://www.samsclub.com/club/6575-pittsburgh-pa/fuel-center",
     ]
-    html_headers = {
-        **HEADERS,
-        "Accept": "text/html,application/xhtml+xml",
-    }
     for url in urls:
-        async with session.get(url, headers=html_headers) as resp:
+        async with session.get(url, headers=BROWSER_HEADERS) as resp:
             html = await resp.text()
             club_id = url.split("/club/")[1].split("-")[0]
             print(f"Sams #{club_id} status:", resp.status, "len:", len(html))

@@ -23,14 +23,17 @@
       },
       "users": {
         "title": "Household MPG",
-        "description": "Optionally assign Home Assistant users and their vehicle MPG for trip cost sensors.",
+        "description": "Optionally assign Home Assistant users, their vehicle MPG, and fuel grade for trip cost sensors.",
         "data": {
           "user_0": "User 1",
           "mpg_0": "User 1 MPG",
+          "fuel_0": "User 1 fuel",
           "user_1": "User 2",
           "mpg_1": "User 2 MPG",
+          "fuel_1": "User 2 fuel",
           "user_2": "User 3",
-          "mpg_2": "User 3 MPG"
+          "mpg_2": "User 3 MPG",
+          "fuel_2": "User 3 fuel"
         }
       }
     },
@@ -58,8 +61,8 @@
         }
       },
       "update_mpg": {
-        "title": "Update MPG",
-        "description": "Update MPG values for configured users."
+        "title": "Update MPG & fuel",
+        "description": "Update MPG and fuel grade for configured users."
       }
     },
     "error": {

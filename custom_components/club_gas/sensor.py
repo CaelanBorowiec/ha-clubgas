@@ -11,6 +11,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .api.helpers import resolve_trip_fuel_type
 from .const import (
     ATTR_ADDRESS,
     ATTR_BRAND,
@@ -28,7 +29,9 @@ from .const import (
     ATTR_USER_NAME,
     CONF_FUEL_TYPES,
     CONF_STATIONS,
+    CONF_USER_FUEL_TYPE,
     CONF_USERS,
+    DEFAULT_USER_FUEL_TYPE,
     DOMAIN,
     FUEL_DIESEL,
     FUEL_PREMIUM,
@@ -72,18 +75,22 @@ async def async_setup_entry(
                     fuel_type,
                 )
             )
-            for user in users:
-                entities.append(
-                    ClubGasTripCostSensor(
-                        coordinator,
-                        entry,
-                        brand,
-                        store_id,
-                        station_name,
-                        fuel_type,
-                        user,
-                    )
+        for user in users:
+            user_fuel = user.get(CONF_USER_FUEL_TYPE, DEFAULT_USER_FUEL_TYPE)
+            trip_fuel = resolve_trip_fuel_type(brand, user_fuel)
+            if trip_fuel is None:
+                continue
+            entities.append(
+                ClubGasTripCostSensor(
+                    coordinator,
+                    entry,
+                    brand,
+                    store_id,
+                    station_name,
+                    trip_fuel,
+                    user,
                 )
+            )
 
     async_add_entities(entities)
 
@@ -197,10 +204,11 @@ class ClubGasTripCostSensor(CoordinatorEntity[ClubGasCoordinator], SensorEntity)
         self._station_name = station_name
         self._user = user
         user_slug = _slug(user.get("user_name", user["user_id"]))
+        fuel_label = self._fuel_type.replace("_", " ").title()
         self._attr_unique_id = (
-            f"{entry.entry_id}_{brand}_{store_id}_{fuel_type}_trip_{user['user_id']}"
+            f"{entry.entry_id}_{brand}_{store_id}_trip_{user['user_id']}"
         )
-        self._attr_name = f"Trip cost ({user.get('user_name', user_slug)})"
+        self._attr_name = f"Trip cost ({user.get('user_name', user_slug)}, {fuel_label})"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_{brand}_{store_id}")},
             name=station_name,

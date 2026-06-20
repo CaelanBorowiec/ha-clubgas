@@ -7,7 +7,7 @@ from typing import Any
 
 from aiohttp import ClientSession
 
-from ..const import BRAND_COSTCO, COSTCO_AJAX_URL, USER_AGENT
+from ..const import BRAND_COSTCO, COSTCO_AJAX_URL, COSTCO_USER_AGENT
 from ..models import StationConfig, StationData
 from .helpers import haversine_miles, parse_price
 
@@ -100,11 +100,11 @@ class CostcoClient:
             "longitude": str(longitude),
             "countryCode": "US",
         }
+        # Minimal headers (see gastrak). Browser UA + Referer triggers Akamai 403.
         headers = {
-            "User-Agent": USER_AGENT,
+            "User-Agent": COSTCO_USER_AGENT,
             "Accept": "*/*",
             "Accept-Language": "en-US,en;q=0.5",
-            "Referer": "https://www.costco.com/warehouse-locations",
         }
         async with self._session.get(
             COSTCO_AJAX_URL, params=params, headers=headers

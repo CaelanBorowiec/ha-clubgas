@@ -39,13 +39,18 @@ from .const import (
     CONF_RETAILERS,
     CONF_SCAN_INTERVAL,
     CONF_STATIONS,
+    CONF_USER_FUEL_TYPE,
     CONF_USER_ID,
     CONF_USER_NAME,
     CONF_USERS,
     DEFAULT_MPG,
     DEFAULT_RADIUS_MILES,
     DEFAULT_SCAN_INTERVAL_MINUTES,
+    DEFAULT_USER_FUEL_TYPE,
     DOMAIN,
+    FUEL_DIESEL,
+    FUEL_PREMIUM,
+    FUEL_REGULAR,
     FUEL_DIESEL,
     FUEL_PREMIUM,
     FUEL_REGULAR,
@@ -67,6 +72,11 @@ _FUEL_TYPE_OPTIONS = [
     SelectOptionDict(value=FUEL_UNLEADED, label="Sam's Unleaded"),
     SelectOptionDict(value=FUEL_PREMIUM, label="Premium"),
     SelectOptionDict(value=FUEL_DIESEL, label="Diesel"),
+]
+_USER_FUEL_OPTIONS = [
+    SelectOptionDict(value=FUEL_REGULAR, label="Regular / Unleaded"),
+    SelectOptionDict(value=FUEL_PREMIUM, label="Premium"),
+    SelectOptionDict(value=FUEL_DIESEL, label="Diesel (Costco only)"),
 ]
 
 
@@ -183,17 +193,17 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is None:
             async with ClientSession() as session:
-                try:
-                    self._discovered = await _discover_stations(
-                        session,
-                        float(self._flow_data[CONF_HOME_LAT]),
-                        float(self._flow_data[CONF_HOME_LNG]),
-                        float(self._flow_data[CONF_RADIUS_MILES]),
-                        list(self._flow_data[CONF_RETAILERS]),
-                    )
-                except Exception as err:  # noqa: BLE001 - show in UI
-                    _LOGGER.exception("Discovery failed")
-                    errors["base"] = str(err)
+                self._discovered, discover_errors = await _discover_stations(
+                    session,
+                    float(self._flow_data[CONF_HOME_LAT]),
+                    float(self._flow_data[CONF_HOME_LNG]),
+                    float(self._flow_data[CONF_RADIUS_MILES]),
+                    list(self._flow_data[CONF_RETAILERS]),
+                )
+                if discover_errors and not self._discovered:
+                    errors["base"] = "; ".join(discover_errors)
+                elif discover_errors:
+                    _LOGGER.warning("Partial station discovery: %s", "; ".join(discover_errors))
 
         if user_input is not None:
             selected_keys = set(user_input.get("selected", []))
@@ -254,12 +264,14 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if not user_id:
                     continue
                 mpg = float(user_input.get(f"mpg_{index}", DEFAULT_MPG))
+                fuel_type = user_input.get(f"fuel_{index}", DEFAULT_USER_FUEL_TYPE)
                 user_name = await _lookup_user_name(self.hass, user_id)
                 users.append(
                     {
                         CONF_USER_ID: user_id,
                         CONF_USER_NAME: user_name,
                         CONF_MPG: mpg,
+                        CONF_USER_FUEL_TYPE: fuel_type,
                     }
                 )
             self._flow_data[CONF_USERS] = users
@@ -304,7 +316,7 @@ class ClubGasOptionsFlow(config_entries.OptionsFlow):
                                     value="add_station", label="Add station by URL"
                                 ),
                                 SelectOptionDict(
-                                    value="update_mpg", label="Update user MPG"
+                                    value="update_mpg", label="Update user MPG & fuel"
                                 ),
                             ],
                             mode=SelectSelectorMode.DROPDOWN,
@@ -351,12 +363,18 @@ class ClubGasOptionsFlow(config_entries.OptionsFlow):
     async def async_step_update_mpg(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Update MPG for configured users."""
+        """Update MPG and fuel type for configured users."""
         if user_input is not None:
             users: list[dict[str, Any]] = []
             for index, existing in enumerate(self.config_entry.data.get(CONF_USERS, [])):
                 mpg = float(user_input.get(f"mpg_{index}", existing.get(CONF_MPG, DEFAULT_MPG)))
-                users.append({**existing, CONF_MPG: mpg})
+                fuel_type = user_input.get(
+                    f"fuel_{index}",
+                    existing.get(CONF_USER_FUEL_TYPE, DEFAULT_USER_FUEL_TYPE),
+                )
+                users.append(
+                    {**existing, CONF_MPG: mpg, CONF_USER_FUEL_TYPE: fuel_type}
+                )
             new_data = dict(self.config_entry.data)
             new_data[CONF_USERS] = users
             self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
@@ -370,7 +388,21 @@ class ClubGasOptionsFlow(config_entries.OptionsFlow):
             ] = NumberSelector(
                 NumberSelectorConfig(min=1, max=100, step=0.1, mode=NumberSelectorMode.BOX)
             )
-        return self.async_show_form(step_id="update_mpg", data_schema=vol.Schema(schema_dict))
+            schema_dict[
+                vol.Required(
+                    f"fuel_{index}",
+                    default=user.get(CONF_USER_FUEL_TYPE, DEFAULT_USER_FUEL_TYPE),
+                )
+            ] = SelectSelector(
+                SelectSelectorConfig(
+                    options=_USER_FUEL_OPTIONS,
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            )
+        return self.async_show_form(
+            step_id="update_mpg",
+            data_schema=vol.Schema(schema_dict),
+        )
 
 
 def _user_mpg_schema(user_options: list[SelectOptionDict]) -> vol.Schema:
@@ -385,6 +417,14 @@ def _user_mpg_schema(user_options: list[SelectOptionDict]) -> vol.Schema:
         )
         schema_dict[vol.Optional(f"mpg_{index}", default=DEFAULT_MPG)] = NumberSelector(
             NumberSelectorConfig(min=1, max=100, step=0.1, mode=NumberSelectorMode.BOX)
+        )
+        schema_dict[
+            vol.Optional(f"fuel_{index}", default=DEFAULT_USER_FUEL_TYPE)
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=_USER_FUEL_OPTIONS,
+                mode=SelectSelectorMode.DROPDOWN,
+            )
         )
     return vol.Schema(schema_dict)
 
@@ -405,18 +445,31 @@ async def _discover_stations(
     longitude: float,
     radius_miles: float,
     retailers: list[str],
-) -> list[StationData]:
+) -> tuple[list[StationData], list[str]]:
     discovered: list[StationData] = []
+    errors: list[str] = []
     if BRAND_COSTCO in retailers:
-        discovered.extend(
-            await CostcoClient(session).discover_nearby(latitude, longitude, radius_miles)
-        )
+        try:
+            discovered.extend(
+                await CostcoClient(session).discover_nearby(
+                    latitude, longitude, radius_miles
+                )
+            )
+        except Exception as err:  # noqa: BLE001 - continue with other retailers
+            _LOGGER.exception("Costco discovery failed")
+            errors.append(f"Costco: {err}")
     if BRAND_SAMS in retailers:
-        discovered.extend(
-            await SamsClient(session).discover_nearby(latitude, longitude, radius_miles)
-        )
+        try:
+            discovered.extend(
+                await SamsClient(session).discover_nearby(
+                    latitude, longitude, radius_miles
+                )
+            )
+        except Exception as err:  # noqa: BLE001 - continue with other retailers
+            _LOGGER.exception("Sam's Club discovery failed")
+            errors.append(f"Sam's Club: {err}")
     discovered.sort(key=lambda item: item.distance_miles or 9999)
-    return discovered
+    return discovered, errors
 
 
 async def _validate_manual_station(

@@ -7,7 +7,15 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
-from ..const import BRAND_COSTCO, BRAND_SAMS, SAMS_FUEL_URL_TEMPLATE
+from ..const import (
+    BRAND_COSTCO,
+    BRAND_SAMS,
+    FUEL_DIESEL,
+    FUEL_PREMIUM,
+    FUEL_REGULAR,
+    FUEL_UNLEADED,
+    SAMS_FUEL_URL_TEMPLATE,
+)
 
 COSTCO_URL_RE = re.compile(
     r"costco\.com/w/-/(?:[^/]+/)?[^/]+/(\d+)",
@@ -116,3 +124,14 @@ def extract_sams_nearby_links(html: str) -> list[str]:
             seen.add(path)
             links.append(f"https://www.samsclub.com{path}")
     return links
+
+
+def resolve_trip_fuel_type(brand: str, user_fuel_type: str) -> str | None:
+    """Map a user's fuel preference to the price key for a retailer."""
+    if user_fuel_type in (FUEL_REGULAR, FUEL_UNLEADED):
+        return FUEL_REGULAR if brand == BRAND_COSTCO else FUEL_UNLEADED
+    if user_fuel_type == FUEL_PREMIUM:
+        return FUEL_PREMIUM
+    if user_fuel_type == FUEL_DIESEL:
+        return FUEL_DIESEL if brand == BRAND_COSTCO else None
+    return None

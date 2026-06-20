@@ -30,6 +30,7 @@ class UserConfig:
     user_id: str
     user_name: str
     mpg: float
+    fuel_type: str = "regular"
 
 
 @dataclass(slots=True)

@@ -12,6 +12,7 @@ from club_gas.api.helpers import (
     haversine_miles,
     parse_sams_prices,
     parse_station_reference,
+    resolve_trip_fuel_type,
 )
 from club_gas.api.costco import CostcoClient
 
@@ -50,6 +51,15 @@ def test_parse_sams_prices() -> None:
 def test_haversine_miles() -> None:
     distance = haversine_miles(40.4406, -79.9959, 40.4625, -79.9611)
     assert 1.0 < distance < 5.0
+
+
+def test_resolve_trip_fuel_type() -> None:
+    assert resolve_trip_fuel_type("costco", "regular") == "regular"
+    assert resolve_trip_fuel_type("sams", "regular") == "unleaded"
+    assert resolve_trip_fuel_type("costco", "premium") == "premium"
+    assert resolve_trip_fuel_type("sams", "premium") == "premium"
+    assert resolve_trip_fuel_type("costco", "diesel") == "diesel"
+    assert resolve_trip_fuel_type("sams", "diesel") is None
 
 
 def test_costco_parse_warehouse() -> None:

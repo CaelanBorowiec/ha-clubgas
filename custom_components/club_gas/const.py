@@ -24,6 +24,7 @@ CONF_URL: Final = "url"
 CONF_USER_ID: Final = "user_id"
 CONF_MPG: Final = "mpg"
 CONF_USER_NAME: Final = "user_name"
+CONF_USER_FUEL_TYPE: Final = "fuel_type"
 
 BRAND_COSTCO: Final = "costco"
 BRAND_SAMS: Final = "sams"
@@ -35,6 +36,7 @@ FUEL_UNLEADED: Final = "unleaded"
 
 DEFAULT_RADIUS_MILES: Final = 25
 DEFAULT_MPG: Final = 28.0
+DEFAULT_USER_FUEL_TYPE: Final = FUEL_REGULAR
 DEFAULT_SCAN_INTERVAL_MINUTES: Final = 180
 
 UPDATE_INTERVAL: Final = timedelta(minutes=DEFAULT_SCAN_INTERVAL_MINUTES)
@@ -66,3 +68,6 @@ USER_AGENT: Final = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
+# Costco's Akamai filter blocks browser-like User-Agents. The AJAX API
+# allowlists the minimal client fingerprint used by gastrak.
+COSTCO_USER_AGENT: Final = "Gastrak/1.0"
