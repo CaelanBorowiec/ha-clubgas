@@ -10,7 +10,6 @@ from aiohttp import ClientSession
 from homeassistant import config_entries
 from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
@@ -21,8 +20,12 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
-    UserSelector,
 )
+
+try:
+    from homeassistant.config_entries import ConfigFlowResult
+except ImportError:
+    from homeassistant.data_entry_flow import FlowResult as ConfigFlowResult
 
 from .const import (
     BRAND_COSTCO,
@@ -111,11 +114,15 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._flow_data: dict[str, Any] = {}
         self._discovered: list[StationData] = []
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Start config flow with home location."""
         return await self.async_step_location()
 
-    async def async_step_location(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_location(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Configure home location and search radius."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -128,7 +135,9 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_discover(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_discover(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Discover nearby stations or accept manual URLs."""
         errors: dict[str, str] = {}
         if user_input is None:
@@ -206,7 +215,9 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={"count": str(len(self._discovered))},
         )
 
-    async def async_step_users(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_users(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Configure per-user MPG values."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -227,15 +238,9 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._flow_data[CONF_USERS] = users
             return self.async_create_entry(title="Club Gas", data=self._flow_data)
 
-        schema_dict: dict[Any, Any] = {}
-        for index in range(3):
-            schema_dict[vol.Optional(f"user_{index}")] = UserSelector()
-            schema_dict[vol.Optional(f"mpg_{index}", default=DEFAULT_MPG)] = NumberSelector(
-                NumberSelectorConfig(min=1, max=100, step=0.1, mode=NumberSelectorMode.BOX)
-            )
         return self.async_show_form(
             step_id="users",
-            data_schema=vol.Schema(schema_dict),
+            data_schema=await _user_mpg_schema(self.hass),
             errors=errors,
         )
 
@@ -245,16 +250,15 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_entry: config_entries.ConfigEntry,
     ) -> ClubGasOptionsFlow:
         """Return options flow handler."""
-        return ClubGasOptionsFlow(config_entry)
+        return ClubGasOptionsFlow()
 
 
 class ClubGasOptionsFlow(config_entries.OptionsFlow):
     """Options flow to add stations and update MPG."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
-
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Manage options."""
         if user_input is not None:
             action = user_input["action"]
@@ -278,7 +282,9 @@ class ClubGasOptionsFlow(config_entries.OptionsFlow):
             ),
         )
 
-    async def async_step_add_station(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_add_station(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Add a station by URL."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -310,7 +316,9 @@ class ClubGasOptionsFlow(config_entries.OptionsFlow):
             errors=errors,
         )
 
-    async def async_step_update_mpg(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_update_mpg(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Update MPG for configured users."""
         if user_input is not None:
             users: list[dict[str, Any]] = []
@@ -331,6 +339,28 @@ class ClubGasOptionsFlow(config_entries.OptionsFlow):
                 NumberSelectorConfig(min=1, max=100, step=0.1, mode=NumberSelectorMode.BOX)
             )
         return self.async_show_form(step_id="update_mpg", data_schema=vol.Schema(schema_dict))
+
+
+async def _user_mpg_schema(hass: HomeAssistant) -> vol.Schema:
+    """Build a schema for optional user + MPG rows."""
+    ha_users = await hass.auth.async_get_users()
+    user_options = [
+        SelectOptionDict(value=user.id, label=user.name or user.id)
+        for user in ha_users
+        if not user.system_generated
+    ]
+    schema_dict: dict[Any, Any] = {}
+    for index in range(3):
+        schema_dict[vol.Optional(f"user_{index}")] = SelectSelector(
+            SelectSelectorConfig(
+                options=user_options,
+                mode=SelectSelectorMode.DROPDOWN,
+            )
+        )
+        schema_dict[vol.Optional(f"mpg_{index}", default=DEFAULT_MPG)] = NumberSelector(
+            NumberSelectorConfig(min=1, max=100, step=0.1, mode=NumberSelectorMode.BOX)
+        )
+    return vol.Schema(schema_dict)
 
 
 async def _discover_stations(
