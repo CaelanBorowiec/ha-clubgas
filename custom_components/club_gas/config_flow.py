@@ -20,6 +20,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
+    TextSelectorType,
 )
 
 try:
@@ -57,29 +58,51 @@ from .models import StationData
 
 _LOGGER = logging.getLogger(__name__)
 
+_RETAILER_OPTIONS = [
+    SelectOptionDict(value=BRAND_COSTCO, label="Costco"),
+    SelectOptionDict(value=BRAND_SAMS, label="Sam's Club"),
+]
+_FUEL_TYPE_OPTIONS = [
+    SelectOptionDict(value=FUEL_REGULAR, label="Costco Regular"),
+    SelectOptionDict(value=FUEL_UNLEADED, label="Sam's Unleaded"),
+    SelectOptionDict(value=FUEL_PREMIUM, label="Premium"),
+    SelectOptionDict(value=FUEL_DIESEL, label="Diesel"),
+]
+
 
 def _location_schema(hass: HomeAssistant) -> vol.Schema:
+    """Build the first-step location schema with HA home defaults."""
     home = hass.config.as_dict()
-    default_lat = home.get(CONF_LATITUDE, 0.0)
-    default_lng = home.get(CONF_LONGITUDE, 0.0)
+    default_lat = float(home.get(CONF_LATITUDE, 0.0))
+    default_lng = float(home.get(CONF_LONGITUDE, 0.0))
     return vol.Schema(
         {
             vol.Required(CONF_HOME_LAT, default=default_lat): NumberSelector(
-                NumberSelectorConfig(min=-90, max=90, step=0.0001, mode=NumberSelectorMode.BOX)
+                NumberSelectorConfig(
+                    min=-90,
+                    max=90,
+                    step="any",
+                    mode=NumberSelectorMode.BOX,
+                )
             ),
             vol.Required(CONF_HOME_LNG, default=default_lng): NumberSelector(
-                NumberSelectorConfig(min=-180, max=180, step=0.0001, mode=NumberSelectorMode.BOX)
+                NumberSelectorConfig(
+                    min=-180,
+                    max=180,
+                    step="any",
+                    mode=NumberSelectorMode.BOX,
+                )
             ),
             vol.Required(CONF_RADIUS_MILES, default=DEFAULT_RADIUS_MILES): NumberSelector(
                 NumberSelectorConfig(min=1, max=100, step=1, mode=NumberSelectorMode.BOX)
             ),
-            vol.Required(CONF_RETAILERS, default=[BRAND_COSTCO, BRAND_SAMS]): SelectSelector(
+            vol.Required(
+                CONF_RETAILERS,
+                default=[BRAND_COSTCO, BRAND_SAMS],
+            ): SelectSelector(
                 SelectSelectorConfig(
-                    options=[
-                        SelectOptionDict(value=BRAND_COSTCO, label="Costco"),
-                        SelectOptionDict(value=BRAND_SAMS, label="Sam's Club"),
-                    ],
-                    mode=SelectSelectorMode.DROPDOWN,
+                    options=_RETAILER_OPTIONS,
+                    mode=SelectSelectorMode.LIST,
                     multiple=True,
                 )
             ),
@@ -88,13 +111,8 @@ def _location_schema(hass: HomeAssistant) -> vol.Schema:
                 default=[FUEL_REGULAR, FUEL_UNLEADED, FUEL_PREMIUM, FUEL_DIESEL],
             ): SelectSelector(
                 SelectSelectorConfig(
-                    options=[
-                        SelectOptionDict(value=FUEL_REGULAR, label="Costco Regular"),
-                        SelectOptionDict(value=FUEL_UNLEADED, label="Sam's Unleaded"),
-                        SelectOptionDict(value=FUEL_PREMIUM, label="Premium"),
-                        SelectOptionDict(value=FUEL_DIESEL, label="Diesel"),
-                    ],
-                    mode=SelectSelectorMode.DROPDOWN,
+                    options=_FUEL_TYPE_OPTIONS,
+                    mode=SelectSelectorMode.LIST,
                     multiple=True,
                 )
             ),
@@ -105,22 +123,45 @@ def _location_schema(hass: HomeAssistant) -> vol.Schema:
     )
 
 
+def _discover_schema(discovered: list[StationData]) -> vol.Schema:
+    """Build discover-step schema; omit empty multi-selects."""
+    fields: dict[Any, Any] = {
+        vol.Optional("manual_stations", default=""): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.TEXT, multiline=True)
+        ),
+    }
+    if discovered:
+        options = [
+            SelectOptionDict(
+                value=_station_option_key(station),
+                label=_station_option_label(station),
+            )
+            for station in discovered
+        ]
+        fields[vol.Optional("selected", default=[opt["value"] for opt in options])] = (
+            SelectSelector(
+                SelectSelectorConfig(
+                    options=options,
+                    mode=SelectSelectorMode.LIST,
+                    multiple=True,
+                )
+            )
+        )
+    return vol.Schema(fields)
+
+
 class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Club Gas."""
 
     VERSION = 1
 
     def __init__(self) -> None:
+        """Initialize flow state."""
+        super().__init__()
         self._flow_data: dict[str, Any] = {}
         self._discovered: list[StationData] = []
 
     async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Start config flow with home location."""
-        return await self.async_step_location()
-
-    async def async_step_location(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Configure home location and search radius."""
@@ -130,7 +171,7 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_discover()
 
         return self.async_show_form(
-            step_id="location",
+            step_id="user",
             data_schema=_location_schema(self.hass),
             errors=errors,
         )
@@ -189,28 +230,9 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 errors["base"] = "Select at least one station or paste a URL"
 
-        options = [
-            SelectOptionDict(
-                value=_station_option_key(station),
-                label=_station_option_label(station),
-            )
-            for station in self._discovered
-        ]
-        default_selected = [option["value"] for option in options]
-
-        schema = vol.Schema(
-            {
-                vol.Optional("selected", default=default_selected): SelectSelector(
-                    SelectSelectorConfig(options=options, multiple=True)
-                ),
-                vol.Optional("manual_stations", default=""): TextSelector(
-                    TextSelectorConfig(multiline=True)
-                ),
-            }
-        )
         return self.async_show_form(
             step_id="discover",
-            data_schema=schema,
+            data_schema=_discover_schema(self._discovered),
             errors=errors,
             description_placeholders={"count": str(len(self._discovered))},
         )
@@ -219,6 +241,11 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Configure per-user MPG values."""
+        user_options = await _user_select_options(self.hass)
+        if user_input is None and not user_options:
+            self._flow_data[CONF_USERS] = []
+            return self.async_create_entry(title="Club Gas", data=self._flow_data)
+
         errors: dict[str, str] = {}
         if user_input is not None:
             users: list[dict[str, Any]] = []
@@ -240,7 +267,7 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="users",
-            data_schema=await _user_mpg_schema(self.hass),
+            data_schema=_user_mpg_schema(user_options),
             errors=errors,
         )
 
@@ -273,9 +300,14 @@ class ClubGasOptionsFlow(config_entries.OptionsFlow):
                     vol.Required("action"): SelectSelector(
                         SelectSelectorConfig(
                             options=[
-                                SelectOptionDict(value="add_station", label="Add station by URL"),
-                                SelectOptionDict(value="update_mpg", label="Update user MPG"),
-                            ]
+                                SelectOptionDict(
+                                    value="add_station", label="Add station by URL"
+                                ),
+                                SelectOptionDict(
+                                    value="update_mpg", label="Update user MPG"
+                                ),
+                            ],
+                            mode=SelectSelectorMode.DROPDOWN,
                         )
                     )
                 }
@@ -309,7 +341,7 @@ class ClubGasOptionsFlow(config_entries.OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Required("reference"): TextSelector(
-                        TextSelectorConfig(multiline=False)
+                        TextSelectorConfig(type=TextSelectorType.TEXT)
                     )
                 }
             ),
@@ -341,14 +373,8 @@ class ClubGasOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(step_id="update_mpg", data_schema=vol.Schema(schema_dict))
 
 
-async def _user_mpg_schema(hass: HomeAssistant) -> vol.Schema:
+def _user_mpg_schema(user_options: list[SelectOptionDict]) -> vol.Schema:
     """Build a schema for optional user + MPG rows."""
-    ha_users = await hass.auth.async_get_users()
-    user_options = [
-        SelectOptionDict(value=user.id, label=user.name or user.id)
-        for user in ha_users
-        if not user.system_generated
-    ]
     schema_dict: dict[Any, Any] = {}
     for index in range(3):
         schema_dict[vol.Optional(f"user_{index}")] = SelectSelector(
@@ -361,6 +387,16 @@ async def _user_mpg_schema(hass: HomeAssistant) -> vol.Schema:
             NumberSelectorConfig(min=1, max=100, step=0.1, mode=NumberSelectorMode.BOX)
         )
     return vol.Schema(schema_dict)
+
+
+async def _user_select_options(hass: HomeAssistant) -> list[SelectOptionDict]:
+    """Return non-system HA users for select dropdowns."""
+    ha_users = await hass.auth.async_get_users()
+    return [
+        SelectOptionDict(value=user.id, label=user.name or user.id)
+        for user in ha_users
+        if not user.system_generated
+    ]
 
 
 async def _discover_stations(
@@ -418,7 +454,7 @@ def _station_option_label(station: StationData) -> str:
         if station.distance_miles is not None
         else "? mi"
     )
-    return f"{station.name} — {distance} — {price_text}"
+    return f"{station.name} - {distance} - {price_text}"
 
 
 def _station_to_config(station: StationData) -> dict[str, Any]:
