@@ -51,11 +51,9 @@ from .const import (
     FUEL_DIESEL,
     FUEL_PREMIUM,
     FUEL_REGULAR,
-    FUEL_DIESEL,
-    FUEL_PREMIUM,
-    FUEL_REGULAR,
     FUEL_UNLEADED,
 )
+from .helpers import get_configured_users
 from .api.costco import CostcoClient
 from .api.helpers import parse_station_reference
 from .api.sams import SamsClient
@@ -163,7 +161,7 @@ def _discover_schema(discovered: list[StationData]) -> vol.Schema:
 class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Club Gas."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         """Initialize flow state."""
@@ -233,10 +231,18 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         errors["base"] = "Select at least one station or paste a URL"
                     else:
                         self._flow_data[CONF_STATIONS] = _dedupe_stations(stations)
-                        return await self.async_step_users()
+                        return self.async_create_entry(
+                            title="Club Gas",
+                            data=self._flow_data,
+                            options={CONF_USERS: []},
+                        )
             elif stations:
                 self._flow_data[CONF_STATIONS] = _dedupe_stations(stations)
-                return await self.async_step_users()
+                return self.async_create_entry(
+                    title="Club Gas",
+                    data=self._flow_data,
+                    options={CONF_USERS: []},
+                )
             else:
                 errors["base"] = "Select at least one station or paste a URL"
 
@@ -245,42 +251,6 @@ class ClubGasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=_discover_schema(self._discovered),
             errors=errors,
             description_placeholders={"count": str(len(self._discovered))},
-        )
-
-    async def async_step_users(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Configure per-user MPG values."""
-        user_options = await _user_select_options(self.hass)
-        if user_input is None and not user_options:
-            self._flow_data[CONF_USERS] = []
-            return self.async_create_entry(title="Club Gas", data=self._flow_data)
-
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            users: list[dict[str, Any]] = []
-            for index in range(3):
-                user_id = user_input.get(f"user_{index}")
-                if not user_id:
-                    continue
-                mpg = float(user_input.get(f"mpg_{index}", DEFAULT_MPG))
-                fuel_type = user_input.get(f"fuel_{index}", DEFAULT_USER_FUEL_TYPE)
-                user_name = await _lookup_user_name(self.hass, user_id)
-                users.append(
-                    {
-                        CONF_USER_ID: user_id,
-                        CONF_USER_NAME: user_name,
-                        CONF_MPG: mpg,
-                        CONF_USER_FUEL_TYPE: fuel_type,
-                    }
-                )
-            self._flow_data[CONF_USERS] = users
-            return self.async_create_entry(title="Club Gas", data=self._flow_data)
-
-        return self.async_show_form(
-            step_id="users",
-            data_schema=_user_mpg_schema(user_options),
-            errors=errors,
         )
 
     @staticmethod
@@ -303,8 +273,8 @@ class ClubGasOptionsFlow(config_entries.OptionsFlow):
             action = user_input["action"]
             if action == "add_station":
                 return await self.async_step_add_station()
-            if action == "update_mpg":
-                return await self.async_step_update_mpg()
+            if action == "configure_users":
+                return await self.async_step_configure_users()
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -316,7 +286,8 @@ class ClubGasOptionsFlow(config_entries.OptionsFlow):
                                     value="add_station", label="Add station by URL"
                                 ),
                                 SelectOptionDict(
-                                    value="update_mpg", label="Update user MPG & fuel"
+                                    value="configure_users",
+                                    label="Configure household drivers",
                                 ),
                             ],
                             mode=SelectSelectorMode.DROPDOWN,
@@ -360,66 +331,71 @@ class ClubGasOptionsFlow(config_entries.OptionsFlow):
             errors=errors,
         )
 
-    async def async_step_update_mpg(
+    async def async_step_configure_users(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Update MPG and fuel type for configured users."""
+        """Configure household drivers (MPG and fuel) for all stations."""
+        user_options = await _user_select_options(self.hass)
+        existing_users = get_configured_users(self.config_entry)
+
         if user_input is not None:
             users: list[dict[str, Any]] = []
-            for index, existing in enumerate(self.config_entry.data.get(CONF_USERS, [])):
-                mpg = float(user_input.get(f"mpg_{index}", existing.get(CONF_MPG, DEFAULT_MPG)))
-                fuel_type = user_input.get(
-                    f"fuel_{index}",
-                    existing.get(CONF_USER_FUEL_TYPE, DEFAULT_USER_FUEL_TYPE),
-                )
+            for index in range(3):
+                user_id = user_input.get(f"user_{index}")
+                if not user_id:
+                    continue
+                mpg = float(user_input.get(f"mpg_{index}", DEFAULT_MPG))
+                fuel_type = user_input.get(f"fuel_{index}", DEFAULT_USER_FUEL_TYPE)
+                user_name = await _lookup_user_name(self.hass, user_id)
                 users.append(
-                    {**existing, CONF_MPG: mpg, CONF_USER_FUEL_TYPE: fuel_type}
+                    {
+                        CONF_USER_ID: user_id,
+                        CONF_USER_NAME: user_name,
+                        CONF_MPG: mpg,
+                        CONF_USER_FUEL_TYPE: fuel_type,
+                    }
                 )
-            new_data = dict(self.config_entry.data)
-            new_data[CONF_USERS] = users
-            self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+            options = dict(self.config_entry.options)
+            options[CONF_USERS] = users
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, options=options
+            )
             await self.hass.config_entries.async_reload(self.config_entry.entry_id)
             return self.async_create_entry(title="", data={})
 
-        schema_dict: dict[Any, Any] = {}
-        for index, user in enumerate(self.config_entry.data.get(CONF_USERS, [])):
-            schema_dict[
-                vol.Required(f"mpg_{index}", default=user.get(CONF_MPG, DEFAULT_MPG))
-            ] = NumberSelector(
-                NumberSelectorConfig(min=1, max=100, step=0.1, mode=NumberSelectorMode.BOX)
-            )
-            schema_dict[
-                vol.Required(
-                    f"fuel_{index}",
-                    default=user.get(CONF_USER_FUEL_TYPE, DEFAULT_USER_FUEL_TYPE),
-                )
-            ] = SelectSelector(
+        return self.async_show_form(
+            step_id="configure_users",
+            data_schema=_user_mpg_schema(user_options, existing_users),
+        )
+
+
+def _user_mpg_schema(
+    user_options: list[SelectOptionDict],
+    existing_users: list[dict[str, Any]] | None = None,
+) -> vol.Schema:
+    """Build a schema for optional user + MPG rows."""
+    existing_users = existing_users or []
+    schema_dict: dict[Any, Any] = {}
+    for index in range(3):
+        existing = existing_users[index] if index < len(existing_users) else {}
+        schema_dict[vol.Optional(f"user_{index}", default=existing.get(CONF_USER_ID))] = (
+            SelectSelector(
                 SelectSelectorConfig(
-                    options=_USER_FUEL_OPTIONS,
+                    options=user_options,
                     mode=SelectSelectorMode.DROPDOWN,
                 )
             )
-        return self.async_show_form(
-            step_id="update_mpg",
-            data_schema=vol.Schema(schema_dict),
         )
-
-
-def _user_mpg_schema(user_options: list[SelectOptionDict]) -> vol.Schema:
-    """Build a schema for optional user + MPG rows."""
-    schema_dict: dict[Any, Any] = {}
-    for index in range(3):
-        schema_dict[vol.Optional(f"user_{index}")] = SelectSelector(
-            SelectSelectorConfig(
-                options=user_options,
-                mode=SelectSelectorMode.DROPDOWN,
-            )
-        )
-        schema_dict[vol.Optional(f"mpg_{index}", default=DEFAULT_MPG)] = NumberSelector(
+        schema_dict[
+            vol.Optional(f"mpg_{index}", default=existing.get(CONF_MPG, DEFAULT_MPG))
+        ] = NumberSelector(
             NumberSelectorConfig(min=1, max=100, step=0.1, mode=NumberSelectorMode.BOX)
         )
         schema_dict[
-            vol.Optional(f"fuel_{index}", default=DEFAULT_USER_FUEL_TYPE)
+            vol.Optional(
+                f"fuel_{index}",
+                default=existing.get(CONF_USER_FUEL_TYPE, DEFAULT_USER_FUEL_TYPE),
+            )
         ] = SelectSelector(
             SelectSelectorConfig(
                 options=_USER_FUEL_OPTIONS,

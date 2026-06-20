@@ -7,7 +7,7 @@ Home Assistant custom integration (HACS) for tracking **Costco** and **Sam's Clu
 - Track fuel prices for configured Costco and Sam's Club stations
 - Discover nearby stations by home coordinates and search radius
 - Add stations manually via fuel-center URL or `costco:332` / `sams:6677` IDs
-- Per Home Assistant user MPG settings for trip cost calculation
+- Global household driver settings (MPG and fuel grade) shared across all stations
 - Trip cost sensors: `(distance / mpg) * price_per_gallon`
 - Manual refresh service: `club_gas.refresh`
 
@@ -53,13 +53,13 @@ sams:6677
 costco:332
 ```
 
-### Step 3 — User MPG
+### Household drivers (optional)
 
-Assign up to three Home Assistant users with MPG and fuel grade (default: 28 MPG, regular/unleaded). Each user gets one trip cost sensor per station using their fuel price.
+After setup, open **Configure → Configure household drivers** to assign up to three Home Assistant users with MPG and fuel grade (default: 28 MPG, regular/unleaded). Each user gets trip cost sensors for every configured station.
 
 ### Reconfigure later
 
-Use **Configure** on the integration to add stations by URL or update MPG and fuel settings.
+Use **Configure** on the integration to add stations by URL or manage household driver settings.
 
 ## Sensors
 
@@ -68,7 +68,12 @@ For each configured station:
 | Entity | Example | State |
 | ------ | ------- | ----- |
 | Price | `sensor.club_gas_costco_332_regular` | $/gal |
-| Trip cost | `sensor.club_gas_costco_332_trip_cost_jane` | USD |
+
+For each household driver, trip cost sensors appear under that user's device (one per station):
+
+| Entity | Example | State |
+| ------ | ------- | ----- |
+| Trip cost | `sensor.jane_costco_pittsburgh_trip_cost` | USD |
 
 Attributes include `distance_miles`, `address`, `latitude`, `longitude`, `mpg`, `trip_gallons`, and `price`.
 

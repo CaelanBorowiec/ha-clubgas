@@ -15,6 +15,7 @@ from club_gas.api.helpers import (
     resolve_trip_fuel_type,
 )
 from club_gas.api.costco import CostcoClient
+from club_gas.helpers import get_configured_users
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -60,6 +61,25 @@ def test_resolve_trip_fuel_type() -> None:
     assert resolve_trip_fuel_type("sams", "premium") == "premium"
     assert resolve_trip_fuel_type("costco", "diesel") == "diesel"
     assert resolve_trip_fuel_type("sams", "diesel") is None
+
+
+def test_get_configured_users_prefers_options() -> None:
+    entry = Mock()
+    entry.options = {
+        "users": [{"user_id": "abc", "mpg": 30.0, "user_fuel_type": "regular"}]
+    }
+    entry.data = {"users": [{"user_id": "old", "mpg": 20.0}]}
+    users = get_configured_users(entry)
+    assert len(users) == 1
+    assert users[0]["user_id"] == "abc"
+
+
+def test_get_configured_users_falls_back_to_data() -> None:
+    entry = Mock()
+    entry.options = {}
+    entry.data = {"users": [{"user_id": "legacy", "mpg": 25.0}]}
+    users = get_configured_users(entry)
+    assert users[0]["user_id"] == "legacy"
 
 
 def test_costco_parse_warehouse() -> None:
