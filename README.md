@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="Club Gas" width="280">
+</p>
+
 # Club Gas
 
 Home Assistant custom integration (HACS) for tracking **Costco** and **Sam's Club** fuel prices in the US, with per-user MPG-based trip cost sensors and Lovelace dashboard examples.
